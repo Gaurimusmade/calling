@@ -26,7 +26,7 @@ Content-Type: application/json
 
 ### 2. Test Connection
 ```bash
-curl -X GET "https://your-domain.com/calling/api/queues/getmasterqueues/" \
+curl -X GET "https://novacaller.markytics.com/calling/api/queues/getmasterqueues/" \
   -H "Authorization: Bearer your_api_key"
 ```
 
@@ -223,9 +223,7 @@ For immediate, single-call operations without creating a queue.
   "retry_count": 3,
   "retry_gap": 300
 }
-
-
+```
 
 Thank You !
-```
 
