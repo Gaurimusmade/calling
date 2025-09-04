@@ -31,8 +31,8 @@ curl -X GET "https://novacaller.markytics.com/calling/api/v1/clients/test-connec
 ```
 
 ### Rate Limits
-- **First Call (queue_id = null):** Max batch size: 1000 calls
-- **Subsequent Calls (with queue_id):** No limit on number of calls per request
+- **Each Batch:** Maximum 1000 calls per batch
+- **Queue Management:** You can add multiple batches to the same queue using the same queue_id
  
 ## Core Operations
 
@@ -42,15 +42,20 @@ curl -X GET "https://novacaller.markytics.com/calling/api/v1/clients/test-connec
 For bulk calling operations. Add batches of call data that will be processed automatically.
 
 **Important Queue Management Workflow:**
-1. **First Call of the Day:** Pass `queue_id` as `null` or omit it completely
-2. **API Response:** Returns a `queue_id` that you must use for all subsequent calls that day
-3. **Subsequent Calls:** Use the returned `queue_id` for unlimited calls throughout the day
-4. **Next Day:** Start fresh with `queue_id` as `null` again
+1. **Create New Queue:** Pass `queue_id` as `null` or omit it completely to create a new queue
+2. **API Response:** Returns a `queue_id` that you must use for all subsequent batches in that same queue
+3. **Add More Batches:** Use the returned `queue_id` to add more batches (max 1000 calls per batch) to the same queue
+4. **Create Another Queue:** To start a new queue, pass `queue_id` as `null` again
+
+**Batch Limits:**
+- Each batch can contain maximum 1000 calls
+- You can add unlimited batches to the same queue
+- Each batch must have a unique `batch_id`
 
 **Request Payload Structure:**
 ```json
 {
-  "queue_id": "integer (optional - null for first call, use returned queue_id for subsequent calls)",
+  "queue_id": "integer (optional - null to create new queue, use returned queue_id to add to existing queue)",
   "batch_id": "integer (required)",
   "dids": ["string array (optional)"],
   "data": ["QueueItem array (required)"]
@@ -85,7 +90,7 @@ For bulk calling operations. Add batches of call data that will be processed aut
 }
 ```
 
-**Complete Example (First Call of the Day):**
+**Complete Example (Create New Queue):**
 ```json
 {
   "queue_id": null,
@@ -118,7 +123,7 @@ For bulk calling operations. Add batches of call data that will be processed aut
 }
 ```
 
-**Example for Subsequent Calls (Same Day):**
+**Example for Adding to Existing Queue:**
 ```json
 {
   "queue_id": 123,
@@ -185,8 +190,6 @@ For immediate, single-call operations without creating a queue.
     "Async": "boolean (optional, default: true)"
   },
   "create_recording": "boolean (optional, default: true)",
-  "recording_path": "string (optional)",
-  "mix_monitor_command": "string (optional)"
 }
 ```
 
@@ -206,8 +209,6 @@ For immediate, single-call operations without creating a queue.
     "Async": true
   },
   "create_recording": true,
-  "recording_path": "/recordings/quick_call_123.wav",
-  "mix_monitor_command": "MixMonitor /recordings/quick_call_123.wav"
 }
 ```
 
