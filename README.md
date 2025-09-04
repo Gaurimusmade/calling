@@ -7,10 +7,10 @@ This guide provides instructions for integrating with the Centralized Calling Sy
 
 ### Prerequisites
 - Valid API key from the system administrator
-- 
+  
 ### Base URL
 ```
-https://your-domain.com/calling/api/
+https://novacaller.markytics.com
 ```
 
 ### Required Headers
@@ -30,25 +30,6 @@ curl -X GET "https://your-domain.com/calling/api/queues/getmasterqueues/" \
   -H "Authorization: Bearer your_api_key"
 ```
 
-### 3. Make Your First Call
-```bash
-curl -X POST "https://your-domain.com/calling/api/queues/insertdataincallqueue/" \
-  -H "Authorization: Bearer your_api_key" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "batch_id": 12345,
-    "data": [{
-      "asterisk_server_code": "server1",
-      "action": {
-        "Action": "Originate",
-        "Channel": "PJSIP/1234567890@endpoint1",
-        "Application": "Dial",
-        "Data": "PJSIP/0987654321@endpoint2,30"
-      }
-    }]
-  }'
-```
-
 ### Rate Limits
 - Max batch size: 1000 calls per request
 - Recommended: 100-500 calls per request
@@ -56,7 +37,7 @@ curl -X POST "https://your-domain.com/calling/api/queues/insertdataincallqueue/"
 ## Core Operations
 
 ### 1. Queue Data Insertion (Bulk Calls)
-**Endpoint:** `POST /calling/api/queues/insertdataincallqueue/`
+**Endpoint:** `POST /calling/api/v1/queues/insertdataincallqueue/`
 
 For bulk calling operations. Add batches of call data that will be processed automatically.
 
