@@ -31,7 +31,7 @@ curl -X GET "https://novacaller.markytics.com/calling/api/v1/clients/test-connec
 ```
 
 ### Rate Limits
-- **First Call (queue_id = null):** Max batch size: 1000 calls per request, Recommended: 100-500 calls per request
+- **First Call (queue_id = null):** Max batch size: 1000 calls
 - **Subsequent Calls (with queue_id):** No limit on number of calls per request
  
 ## Core Operations
