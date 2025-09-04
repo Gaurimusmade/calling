@@ -45,6 +45,99 @@ Your API key is your primary authentication method. Keep it secure and never exp
 - Use HTTPS for all communications
 - Never log or expose API keys in error messages
 
+### API Key Creation and Management
+
+#### 1. Create New Client with API Key
+**Endpoint:** `POST /calling/api/clients/`
+
+**Description:** Creates a new client and automatically generates an API key.
+
+**Authentication:** Required (Superuser API Key)
+
+**Request Body:**
+```json
+{
+  "name": "string (required)",
+  "accountcode": "string (required)",
+  "username": "string (required)",
+  "did": "string (optional)",
+  "phone_number": "string (optional)",
+  "allocated_channels": "integer (optional, default: 0)",
+  "callbackurl": "string (optional)",
+  "is_superuser": "boolean (optional, default: false)",
+  "rate_limit": "integer (optional, default: 0)",
+  "active_time_start": "datetime (optional)",
+  "active_time_end": "datetime (optional)",
+  "is_active": "boolean (optional, default: true)",
+  "status": "string (optional, default: 'active')",
+  "asyncdatabaseurl": "string (optional)",
+  "syncdatabaseurl": "string (optional)"
+}
+```
+
+**Response:**
+```json
+{
+  "id": 123,
+  "name": "Client Name",
+  "accountcode": "client_xyz",
+  "username": "client_username",
+  "api_key": "abc123def456ghi789jkl012mno345pqr678stu901vwx234yz",
+  "is_active": true,
+  "status": "active",
+  "created_at": "2024-01-01T10:00:00Z",
+  "updated_at": "2024-01-01T10:00:00Z"
+}
+```
+
+#### 2. Regenerate API Key
+**Endpoint:** `PUT /calling/api/clients/regenerate-api-key`
+
+**Description:** Regenerates a new API key for the authenticated client.
+
+**Authentication:** Required (Client's own API Key)
+
+**Request Body:** None
+
+**Response:**
+```json
+{
+  "id": 123,
+  "name": "Client Name",
+  "accountcode": "client_xyz",
+  "username": "client_username",
+  "api_key": "new_abc123def456ghi789jkl012mno345pqr678stu901vwx234yz",
+  "is_active": true,
+  "status": "active",
+  "created_at": "2024-01-01T10:00:00Z",
+  "updated_at": "2024-01-01T10:05:00Z"
+}
+```
+
+#### 3. Revoke API Key
+**Endpoint:** `PUT /calling/api/clients/revoke-api-key`
+
+**Description:** Revokes (removes) the API key for the authenticated client.
+
+**Authentication:** Required (Client's own API Key)
+
+**Request Body:** None
+
+**Response:**
+```json
+{
+  "id": 123,
+  "name": "Client Name",
+  "accountcode": "client_xyz",
+  "username": "client_username",
+  "api_key": null,
+  "is_active": true,
+  "status": "active",
+  "created_at": "2024-01-01T10:00:00Z",
+  "updated_at": "2024-01-01T10:05:00Z"
+}
+```
+
 ## Queue Data Insertion
 
 ### Overview
@@ -291,11 +384,36 @@ Empty the client RabbitMQ queue to stop calling.
 ## Step-by-Step Integration Guide
 
 ### Step 1: Obtain Your Credentials
-1. Contact your system administrator to get:
+1. **For New Clients:** Contact your system administrator to create a new client account
+2. **For Existing Clients:** Contact your system administrator to get:
    - Your API key
    - Your account code
    - Allocated server codes and configurations
    - Endpoint configurations
+
+### Step 1.1: Create New Client (System Administrator)
+If you're a system administrator creating a new client:
+
+```bash
+curl -X POST "https://your-domain.com/calling/api/clients/" \
+  -H "Authorization: Bearer your_superuser_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Client Company Name",
+    "accountcode": "client_xyz",
+    "username": "client_username",
+    "did": "+1234567890",
+    "phone_number": "+1234567890",
+    "allocated_channels": 10,
+    "callbackurl": "https://client.com/callback",
+    "is_superuser": false,
+    "rate_limit": 1000,
+    "is_active": true,
+    "status": "active"
+  }'
+```
+
+This will return a response with the new client's API key that you can provide to the client.
 
 ### Step 2: Test Your Connection
 ```bash
@@ -490,7 +608,59 @@ All responses follow this format:
 
 ## Examples
 
-### Example 1: Basic Queue Insertion
+### Example 1: Create New Client with API Key
+```bash
+#!/bin/bash
+
+SUPERUSER_API_KEY="superuser_api_key_here"
+BASE_URL="https://your-domain.com/calling/api"
+
+# Create a new client (requires superuser API key)
+curl -X POST "${BASE_URL}/clients/" \
+  -H "Authorization: Bearer ${SUPERUSER_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "New Client Company",
+    "accountcode": "newclient123",
+    "username": "newclient_user",
+    "did": "+1234567890",
+    "phone_number": "+1234567890",
+    "allocated_channels": 10,
+    "callbackurl": "https://newclient.com/callback",
+    "is_superuser": false,
+    "rate_limit": 1000,
+    "is_active": true,
+    "status": "active"
+  }'
+```
+
+### Example 2: Regenerate API Key
+```bash
+#!/bin/bash
+
+CLIENT_API_KEY="current_client_api_key_here"
+BASE_URL="https://your-domain.com/calling/api"
+
+# Regenerate API key for the client
+curl -X PUT "${BASE_URL}/clients/regenerate-api-key" \
+  -H "Authorization: Bearer ${CLIENT_API_KEY}" \
+  -H "Content-Type: application/json"
+```
+
+### Example 3: Revoke API Key
+```bash
+#!/bin/bash
+
+CLIENT_API_KEY="current_client_api_key_here"
+BASE_URL="https://your-domain.com/calling/api"
+
+# Revoke API key for the client
+curl -X PUT "${BASE_URL}/clients/revoke-api-key" \
+  -H "Authorization: Bearer ${CLIENT_API_KEY}" \
+  -H "Content-Type: application/json"
+```
+
+### Example 4: Basic Queue Insertion
 ```bash
 #!/bin/bash
 
@@ -576,7 +746,7 @@ curl -X PUT "${BASE_URL}/queues/updatequeuemaster/123" \
   }'
 ```
 
-### Example 4: Python Integration
+### Example 5: Python Integration
 ```python
 import requests
 import json
@@ -590,6 +760,31 @@ class CentralizedCallingClient:
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         }
+    
+    def create_client(self, client_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new client with API key (requires superuser API key)"""
+        response = requests.post(
+            f"{self.base_url}/clients/",
+            headers=self.headers,
+            json=client_data
+        )
+        return response.json()
+    
+    def regenerate_api_key(self) -> Dict[str, Any]:
+        """Regenerate API key for the authenticated client"""
+        response = requests.put(
+            f"{self.base_url}/clients/regenerate-api-key",
+            headers=self.headers
+        )
+        return response.json()
+    
+    def revoke_api_key(self) -> Dict[str, Any]:
+        """Revoke API key for the authenticated client"""
+        response = requests.put(
+            f"{self.base_url}/clients/revoke-api-key",
+            headers=self.headers
+        )
+        return response.json()
     
     def insert_queue_data(self, batch_id: int, calls: List[Dict[str, Any]], 
                          queue_id: int = None, dids: List[str] = None) -> Dict[str, Any]:
@@ -664,10 +859,42 @@ class CentralizedCallingClient:
 
 # Usage example
 if __name__ == "__main__":
-    client = CentralizedCallingClient(
-        api_key="your_api_key_here",
+    # Example 1: Create a new client (requires superuser API key)
+    superuser_client = CentralizedCallingClient(
+        api_key="superuser_api_key_here",
         base_url="https://your-domain.com/calling/api"
     )
+    
+    new_client_data = {
+        "name": "New Client Company",
+        "accountcode": "newclient123",
+        "username": "newclient_user",
+        "did": "+1234567890",
+        "phone_number": "+1234567890",
+        "allocated_channels": 10,
+        "callbackurl": "https://newclient.com/callback",
+        "is_superuser": False,
+        "rate_limit": 1000,
+        "is_active": True,
+        "status": "active"
+    }
+    
+    new_client_result = superuser_client.create_client(new_client_data)
+    print(f"New client created: {new_client_result}")
+    
+    # Example 2: Use the new client's API key
+    client = CentralizedCallingClient(
+        api_key=new_client_result["api_key"],
+        base_url="https://your-domain.com/calling/api"
+    )
+    
+    # Regenerate API key
+    regenerated_result = client.regenerate_api_key()
+    print(f"API key regenerated: {regenerated_result}")
+    
+    # Update client with new API key
+    client.api_key = regenerated_result["api_key"]
+    client.headers["Authorization"] = f"Bearer {client.api_key}"
     
     # Insert batch of calls
     calls = [
@@ -700,6 +927,10 @@ if __name__ == "__main__":
     # Get queues
     queues = client.get_queues()
     print(f"Queues: {queues}")
+    
+    # Revoke API key (optional)
+    revoke_result = client.revoke_api_key()
+    print(f"API key revoked: {revoke_result}")
 ```
 
 ## Support and Troubleshooting
