@@ -1,877 +1,472 @@
-# Client-Side Changes Required for Centralized Calling Integration
-
-## Table of Contents
-1. [Overview](#overview)
-2. [Database Setup Requirements](#database-setup-requirements)
-3. [Callback URL Implementation](#callback-url-implementation)
-4. [Client Database Tables](#client-database-tables)
-5. [API Integration Changes](#api-integration-changes)
-6. [Configuration Changes](#configuration-changes)
-7. [Monitoring and Logging Setup](#monitoring-and-logging-setup)
-8. [Security Considerations](#security-considerations)
-9. [Testing and Validation](#testing-and-validation)
-10. [Migration Checklist](#migration-checklist)
-
----
+# Queue Data Insertion Documentation
 
 ## Overview
+This documentation provides comprehensive information about adding data to queues for particular clients/account codes in the Centralized Calling System. The system supports batch insertion of call data into queues for outbound calling campaigns.
 
-This document outlines the specific changes that clients need to make on their side to integrate with the Centralized Calling System. These changes include database modifications, callback implementations, configuration updates, and API integration adjustments.
+## Table of Contents
+1. [API Endpoints](#api-endpoints)
+2. [Data Models](#data-models)
+3. [API Payload Structures](#api-payload-structures)
+4. [Authentication](#authentication)
+5. [Examples](#examples)
+6. [Error Handling](#error-handling)
+7. [Queue Management](#queue-management)
+8. [Best Practices](#best-practices)
 
----
+## API Endpoints
 
-## Database Setup Requirements
+### 1. Insert Data in Call Queue
+**Endpoint:** `POST /calling/api/queues/insertdataincallqueue/`
 
-### 1. PostgreSQL Database Configuration
+**Description:** Inserts a batch of call data into the queue for a specific client/account code.
 
-#### Required Database Setup:
-```sql
--- Create database for client (if using separate database)
-CREATE DATABASE client_calling_db;
+**Authentication:** Required (Client API Key)
 
--- Create user with appropriate permissions
-CREATE USER client_user WITH PASSWORD 'secure_password';
-GRANT ALL PRIVILEGES ON DATABASE client_calling_db TO client_user;
-```
+**Request Body:** `InsertQueueRequest`
 
-#### Database Connection URLs:
-You need to provide these URLs during client registration:
-- **Async Database URL**: `postgresql+asyncpg://user:pass@host:port/db`
-- **Sync Database URL**: `postgresql+psycopg://user:pass@host:port/db`
+### 2. Get Master Queues
+**Endpoint:** `GET /calling/api/queues/getmasterqueues/`
 
----
+**Description:** Retrieves all master queues for a client with pagination and status counts.
 
-## Callback URL Implementation
+**Query Parameters:**
+- `accountcode` (optional): Account code (required for superusers)
+- `page` (optional): Page number (default: 1)
+- `page_size` (optional): Items per page (default: 100)
 
-### 1. Callback Endpoint Setup
+### 3. Get Queue by ID
+**Endpoint:** `GET /calling/api/queues/getqueues/`
 
-You must implement a callback endpoint to receive call status updates from the centralized system.
+**Description:** Retrieves specific queue items by master queue ID.
 
-#### Required Callback Endpoint:
-```http
-POST https://your-domain.com/callback
-Content-Type: application/json
-```
+**Query Parameters:**
+- `master_queue_id` (required): ID of the master queue
+- `client_code` (optional): Client code (required for superusers)
 
-#### Callback Payload Structure:
+### 4. Get Quick Calls
+**Endpoint:** `GET /calling/api/queues/getquickcalls/`
+
+**Description:** Retrieves quick calls (calls without queue_id).
+
+**Query Parameters:**
+- `client_code` (optional): Client code (required for superusers)
+
+### 5. Insert Quick Call
+**Endpoint:** `POST /calling/api/queues/insertquickcall/`
+
+**Description:** Inserts a single quick call into the queue.
+
+**Request Body:** `QuickCall`
+
+### 6. Update Queue Master
+**Endpoint:** `PUT /calling/api/queues/updatequeuemaster/{queue_id}`
+
+**Description:** Updates queue master retry settings and status.
+
+**Request Body:** `UpdateQueueMasterPayload`
+
+### 7. Flush Queue
+**Endpoint:** `GET /calling/api/queues/flushqueue/`
+
+**Description:** Empties the client RabbitMQ queue to stop calling.
+
+**Query Parameters:**
+- `client_code` (required): Client code
+
+### 8. Get Queue Statuses
+**Endpoint:** `GET /calling/api/queues/getqueuestatuses/`
+
+**Description:** Retrieves all available queue statuses.
+
+## Data Models
+
+### InsertQueueRequest
 ```json
 {
-  "event_type": "call_status_update",
-  "accountcode": "YOUR_ACCOUNT_CODE",
-  "batch_id": 12345,
-  "call_id": "unique_call_id",
-  "phone_number": "9876543210",
-  "call_status": "completed",
-  "disposition": "answered",
-  "duration": 120,
-  "start_time": "2024-01-01T10:00:00Z",
-  "end_time": "2024-01-01T10:02:00Z",
-  "recording_url": "https://recordings.example.com/call_123.wav",
-  "custom_data": {
-    "customer_id": "CUST001",
-    "campaign_id": "CAMP001"
+  "queue_id": "integer (optional)",
+  "batch_id": "integer (required)",
+  "dids": ["string array (optional)"],
+  "data": ["QueueItem array (required)"]
+}
+```
+
+### QueueItem
+```json
+{
+  "asterisk_server_code": "string (required)",
+  "caller_id": "string (optional)",
+  "action": {
+    "Action": "Originate (required)",
+    "ActionID": "string (optional)",
+    "Channel": "string (required)",
+    "Application": "string (optional)",
+    "Data": "string (optional)",
+    "Timeout": "integer (optional, default: 30000)",
+    "CallerID": "string (optional)",
+    "Variable": "string (optional)",
+    "Account": "string (optional)",
+    "EarlyMedia": "boolean (optional, default: true)",
+    "Async": "boolean (optional, default: true)",
+    "Codecs": "string (optional)",
+    "ChannelId": "string (optional)",
+    "OtherChannelId": "string (optional)",
+    "PreDialGoSub": "string (optional)"
   },
-  "server_code": "server1",
-  "error_message": null
+  "retry": "integer (default: 0)",
+  "call_tried": "integer (default: 0)",
+  "call_success": "integer (default: 0)",
+  "call_failed": "integer (default: 0)",
+  "call_status": "string (default: 'pending')",
+  "connected": "boolean (default: false)",
+  "create_recording": "boolean (default: false)",
+  "recording_format": "string (default: 'wav')",
+  "queue_type": "string (default: 'outbound')",
+  "queue_status": "string (default: 'pending')",
+  "call_timeout": "integer (default: 30)",
+  "recording_path": "string (optional)",
+  "mix_monitor_command": "string (optional)",
+  "disposition": "string (optional)",
+  "contact_number": "integer (optional)",
+  "project": "string (optional)",
+  "deadline": "datetime (optional)"
 }
 ```
 
-#### Callback Event Types:
-- `call_started`: Call initiation
-- `call_answered`: Call answered by recipient
-- `call_completed`: Call finished successfully
-- `call_failed`: Call failed with error
-- `call_busy`: Recipient line busy
-- `call_no_answer`: No answer from recipient
-- `call_timeout`: Call timed out
-
-### 2. Callback Implementation Examples
-
-#### Python Flask Implementation:
-```python
-from flask import Flask, request, jsonify
-import logging
-
-app = Flask(__name__)
-logging.basicConfig(level=logging.INFO)
-
-@app.route('/callback', methods=['POST'])
-def handle_callback():
-    try:
-        data = request.get_json()
-        
-        # Validate callback data
-        if not data or 'event_type' not in data:
-            return jsonify({'error': 'Invalid callback data'}), 400
-        
-        # Process callback based on event type
-        event_type = data['event_type']
-        
-        if event_type == 'call_started':
-            handle_call_started(data)
-        elif event_type == 'call_completed':
-            handle_call_completed(data)
-        elif event_type == 'call_failed':
-            handle_call_failed(data)
-        else:
-            handle_other_event(data)
-        
-        return jsonify({'status': 'success'}), 200
-        
-    except Exception as e:
-        logging.error(f"Callback processing error: {e}")
-        return jsonify({'error': 'Internal server error'}), 500
-
-def handle_call_started(data):
-    """Handle call started event"""
-    logging.info(f"Call started: {data['phone_number']}")
-    # Update your database with call start information
-    # Example: update_call_status(data['call_id'], 'started')
-
-def handle_call_completed(data):
-    """Handle call completed event"""
-    logging.info(f"Call completed: {data['phone_number']}, Duration: {data['duration']}")
-    # Update your database with call completion information
-    # Example: update_call_status(data['call_id'], 'completed', data['duration'])
-
-def handle_call_failed(data):
-    """Handle call failed event"""
-    logging.error(f"Call failed: {data['phone_number']}, Error: {data.get('error_message')}")
-    # Update your database with call failure information
-    # Example: update_call_status(data['call_id'], 'failed', error=data.get('error_message'))
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, ssl_context='adhoc')
+### QuickCall
+```json
+{
+  "asterisk_server_code": "string (required)",
+  "number1": "string (required)",
+  "number2": "string (optional)",
+  "customer_name": "string (required)",
+  "prefix": "string (optional)",
+  "endpoint": "string (optional)",
+  "action": {
+    "Application": "string (required)",
+    "Data": "string (optional)",
+    "Async": "boolean (optional)",
+    "ChannelId": "string (optional)"
+  },
+  "create_recording": "boolean (optional)",
+  "recording_format": "string (optional)",
+  "mix_monitor_command": "string (optional)",
+  "call_timeout": "integer (optional)",
+  "project": "string (optional)"
+}
 ```
 
-#### Node.js Express Implementation:
-```javascript
-const express = require('express');
-const app = express();
+### UpdateQueueMasterPayload
+```json
+{
+  "queue_status": "string (optional)",
+  "retry": "boolean (optional)",
+  "retry_count": "integer (optional)",
+  "retry_gap": "integer (optional)"
+}
+```
 
-app.use(express.json());
+## API Payload Structures
 
-app.post('/callback', (req, res) => {
-    try {
-        const data = req.body;
-        
-        // Validate callback data
-        if (!data || !data.event_type) {
-            return res.status(400).json({ error: 'Invalid callback data' });
-        }
-        
-        // Process callback based on event type
-        switch (data.event_type) {
-            case 'call_started':
-                handleCallStarted(data);
-                break;
-            case 'call_completed':
-                handleCallCompleted(data);
-                break;
-            case 'call_failed':
-                handleCallFailed(data);
-                break;
-            default:
-                handleOtherEvent(data);
-        }
-        
-        res.json({ status: 'success' });
-        
-    } catch (error) {
-        console.error('Callback processing error:', error);
-        res.status(500).json({ error: 'Internal server error' });
+### Complete InsertQueueRequest Example
+```json
+{
+  "queue_id": 123,
+  "batch_id": 456,
+  "dids": ["+1234567890", "+0987654321"],
+  "data": [
+    {
+      "asterisk_server_code": "server1",
+      "caller_id": "Company <1001>",
+      "action": {
+        "Action": "Originate",
+        "ActionID": "call-uuid-1234",
+        "Channel": "PJSIP/1234567890@endpoint1",
+        "Application": "Dial",
+        "Data": "PJSIP/0987654321@endpoint2,30",
+        "Timeout": 30000,
+        "CallerID": "Company <1001>",
+        "Account": "client123",
+        "EarlyMedia": true,
+        "Async": true
+      },
+      "retry": 3,
+      "call_tried": 0,
+      "call_success": 0,
+      "call_failed": 0,
+      "call_status": "pending",
+      "connected": false,
+      "create_recording": true,
+      "recording_format": "wav",
+      "queue_type": "outbound",
+      "queue_status": "pending",
+      "call_timeout": 30,
+      "recording_path": "/recordings/call_123.wav",
+      "mix_monitor_command": "/home/ubuntu/asterisk_audiosocket/script.py",
+      "disposition": null,
+      "contact_number": 1234567890,
+      "project": "campaign_2024",
+      "deadline": "2024-12-31T23:59:59Z"
     }
-});
-
-function handleCallStarted(data) {
-    console.log(`Call started: ${data.phone_number}`);
-    // Update your database with call start information
+  ]
 }
+```
 
-function handleCallCompleted(data) {
-    console.log(`Call completed: ${data.phone_number}, Duration: ${data.duration}`);
-    // Update your database with call completion information
+### QuickCall Example
+```json
+{
+  "asterisk_server_code": "server1",
+  "number1": "1234567890",
+  "number2": "0987654321",
+  "customer_name": "John Doe",
+  "prefix": "1",
+  "endpoint": "provider1",
+  "action": {
+    "Application": "Dial",
+    "Data": "PJSIP/0987654321@endpoint2,30",
+    "Async": true,
+    "ChannelId": "channel-123"
+  },
+  "create_recording": true,
+  "recording_format": "wav",
+  "mix_monitor_command": "/home/ubuntu/asterisk_audiosocket/script.py",
+  "call_timeout": 30,
+  "project": "quick_campaign"
 }
-
-function handleCallFailed(data) {
-    console.error(`Call failed: ${data.phone_number}, Error: ${data.error_message}`);
-    // Update your database with call failure information
-}
-
-app.listen(5000, () => {
-    console.log('Callback server running on port 5000');
-});
 ```
 
----
+## Authentication
 
-## Client Database Tables
+All queue endpoints require authentication using the client's API key. The API key should be included in the request headers:
 
-### 1. Required Table Structures
-
-You need to create these tables in your database to store call-related data:
-
-#### Call Logs Table:
-```sql
-CREATE TABLE call_logs (
-    id SERIAL PRIMARY KEY,
-    call_id VARCHAR(255) UNIQUE NOT NULL,
-    accountcode VARCHAR(100) NOT NULL,
-    batch_id INTEGER,
-    phone_number VARCHAR(20) NOT NULL,
-    call_status VARCHAR(50) NOT NULL,
-    disposition VARCHAR(50),
-    duration INTEGER DEFAULT 0,
-    start_time TIMESTAMP,
-    end_time TIMESTAMP,
-    recording_url TEXT,
-    server_code VARCHAR(100),
-    error_message TEXT,
-    custom_data JSONB,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Indexes for better performance
-CREATE INDEX idx_call_logs_accountcode ON call_logs(accountcode);
-CREATE INDEX idx_call_logs_batch_id ON call_logs(batch_id);
-CREATE INDEX idx_call_logs_phone_number ON call_logs(phone_number);
-CREATE INDEX idx_call_logs_call_status ON call_logs(call_status);
-CREATE INDEX idx_call_logs_created_at ON call_logs(created_at);
+```
+Authorization: Bearer <your_api_key>
 ```
 
-#### Call Batches Table:
-```sql
-CREATE TABLE call_batches (
-    id SERIAL PRIMARY KEY,
-    batch_id INTEGER UNIQUE NOT NULL,
-    accountcode VARCHAR(100) NOT NULL,
-    batch_name VARCHAR(255),
-    total_calls INTEGER DEFAULT 0,
-    completed_calls INTEGER DEFAULT 0,
-    failed_calls INTEGER DEFAULT 0,
-    batch_status VARCHAR(50) DEFAULT 'pending',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+### Client Types
+1. **Regular Client**: Can only access their own data
+2. **Superuser**: Can access any client's data by providing `accountcode` parameter
 
--- Indexes
-CREATE INDEX idx_call_batches_accountcode ON call_batches(accountcode);
-CREATE INDEX idx_call_batches_batch_status ON call_batches(batch_status);
-```
+## Examples
 
-#### Call Queue Table (Optional - for local queue management):
-```sql
-CREATE TABLE local_call_queue (
-    id SERIAL PRIMARY KEY,
-    phone_number VARCHAR(20) NOT NULL,
-    batch_id INTEGER,
-    custom_data JSONB,
-    queue_status VARCHAR(50) DEFAULT 'pending',
-    retry_count INTEGER DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Indexes
-CREATE INDEX idx_local_queue_batch_id ON local_call_queue(batch_id);
-CREATE INDEX idx_local_queue_status ON local_call_queue(queue_status);
-```
-
-### 2. Database Migration Scripts
-
-#### Python Alembic Migration:
-```python
-# migrations/versions/001_add_calling_tables.py
-"""Add calling system tables
-
-Revision ID: 001
-Revises: 
-Create Date: 2024-01-01 10:00:00.000000
-
-"""
-from alembic import op
-import sqlalchemy as sa
-
-# revision identifiers
-revision = '001'
-down_revision = None
-branch_labels = None
-depends_on = None
-
-def upgrade():
-    # Create call_logs table
-    op.create_table('call_logs',
-        sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('call_id', sa.String(255), nullable=False),
-        sa.Column('accountcode', sa.String(100), nullable=False),
-        sa.Column('batch_id', sa.Integer(), nullable=True),
-        sa.Column('phone_number', sa.String(20), nullable=False),
-        sa.Column('call_status', sa.String(50), nullable=False),
-        sa.Column('disposition', sa.String(50), nullable=True),
-        sa.Column('duration', sa.Integer(), nullable=True),
-        sa.Column('start_time', sa.DateTime(), nullable=True),
-        sa.Column('end_time', sa.DateTime(), nullable=True),
-        sa.Column('recording_url', sa.Text(), nullable=True),
-        sa.Column('server_code', sa.String(100), nullable=True),
-        sa.Column('error_message', sa.Text(), nullable=True),
-        sa.Column('custom_data', sa.JSON(), nullable=True),
-        sa.Column('created_at', sa.DateTime(), nullable=True),
-        sa.Column('updated_at', sa.DateTime(), nullable=True),
-        sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('call_id')
-    )
-    
-    # Create indexes
-    op.create_index('idx_call_logs_accountcode', 'call_logs', ['accountcode'])
-    op.create_index('idx_call_logs_batch_id', 'call_logs', ['batch_id'])
-    op.create_index('idx_call_logs_phone_number', 'call_logs', ['phone_number'])
-    op.create_index('idx_call_logs_call_status', 'call_logs', ['call_status'])
-    op.create_index('idx_call_logs_created_at', 'call_logs', ['created_at'])
-
-def downgrade():
-    op.drop_table('call_logs')
-```
-
----
-
-## API Integration Changes
-
-### 1. Update Your API Client
-
-#### Python Integration:
-```python
-import requests
-import json
-from datetime import datetime
-
-class CentralizedCallingClient:
-    def __init__(self, base_url, api_key):
-        self.base_url = base_url.rstrip('/')
-        self.api_key = api_key
-        self.headers = {
-            'X-API-KEY': api_key,
-            'Content-Type': 'application/json'
-        }
-    
-    def submit_call_batch(self, batch_id, phone_numbers, custom_data=None):
-        """Submit a batch of phone numbers for calling"""
-        data = []
-        for phone in phone_numbers:
-            entry = {"phone_number": phone}
-            if custom_data:
-                entry["custom_data"] = custom_data
-            data.append(entry)
-        
-        payload = {
-            "batch_id": batch_id,
-            "data": data
-        }
-        
-        response = requests.post(
-            f"{self.base_url}/api/v1/queues/insertdataincallqueue/",
-            headers=self.headers,
-            json=payload
-        )
-        return response.json()
-    
-    def get_call_status(self, batch_id):
-        """Get status of calls in a batch"""
-        response = requests.get(
-            f"{self.base_url}/api/v1/queues/batch-status/{batch_id}",
-            headers=self.headers
-        )
-        return response.json()
-    
-    def dispatch_calls(self):
-        """Dispatch queued calls"""
-        response = requests.post(
-            f"{self.base_url}/api/v1/controls/dispatch-calls",
-            headers=self.headers
-        )
-        return response.json()
-```
-
-### 2. Update Your Application Logic
-
-#### Call Processing Workflow:
-```python
-def process_calling_campaign(campaign_data):
-    """Process a calling campaign using centralized system"""
-    
-    # Initialize centralized calling client
-    calling_client = CentralizedCallingClient(
-        base_url="https://centralized-calling.example.com",
-        api_key="your_api_key_here"
-    )
-    
-    # Generate unique batch ID
-    batch_id = generate_batch_id()
-    
-    # Prepare phone numbers
-    phone_numbers = campaign_data['phone_numbers']
-    custom_data = {
-        'campaign_id': campaign_data['campaign_id'],
-        'customer_segment': campaign_data['segment']
-    }
-    
-    # Submit batch to centralized system
-    result = calling_client.submit_call_batch(
-        batch_id=batch_id,
-        phone_numbers=phone_numbers,
-        custom_data=custom_data
-    )
-    
-    if result.get('status') == 'success':
-        # Dispatch calls
-        dispatch_result = calling_client.dispatch_calls()
-        
-        # Update local database
-        update_local_batch_status(batch_id, 'submitted')
-        
-        return {
-            'batch_id': batch_id,
-            'status': 'submitted',
-            'total_calls': len(phone_numbers)
-        }
-    else:
-        raise Exception(f"Failed to submit batch: {result.get('message')}")
-
-def handle_callback_update(callback_data):
-    """Handle callback updates from centralized system"""
-    
-    call_id = callback_data['call_id']
-    phone_number = callback_data['phone_number']
-    call_status = callback_data['call_status']
-    
-    # Update local database
-    update_call_log(
-        call_id=call_id,
-        phone_number=phone_number,
-        call_status=call_status,
-        duration=callback_data.get('duration'),
-        disposition=callback_data.get('disposition'),
-        recording_url=callback_data.get('recording_url'),
-        error_message=callback_data.get('error_message')
-    )
-    
-    # Update batch statistics
-    update_batch_statistics(callback_data['batch_id'], call_status)
-    
-    # Trigger any business logic based on call status
-    if call_status == 'completed':
-        handle_successful_call(callback_data)
-    elif call_status == 'failed':
-        handle_failed_call(callback_data)
-```
-
----
-
-## Configuration Changes
-
-### 1. Environment Variables
-
-Add these environment variables to your configuration:
-
+### Example 1: Insert Batch of Calls
 ```bash
-# Centralized Calling System Configuration
-CENTRALIZED_CALLING_BASE_URL=https://centralized-calling.example.com
-CENTRALIZED_CALLING_API_KEY=your_api_key_here
-CENTRALIZED_CALLING_CALLBACK_URL=https://your-domain.com/callback
-
-# Database Configuration (if using separate database)
-CLIENT_CALLING_DB_URL=postgresql://user:pass@host:port/client_calling_db
-CLIENT_CALLING_ASYNC_DB_URL=postgresql+asyncpg://user:pass@host:port/client_calling_db
-
-# Callback Security
-CALLBACK_SECRET_KEY=your_callback_secret_key
-CALLBACK_VERIFICATION_ENABLED=true
+curl -X POST "https://your-domain.com/calling/api/queues/insertdataincallqueue/" \
+  -H "Authorization: Bearer your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "queue_id": null,
+    "batch_id": 789,
+    "dids": ["+1234567890"],
+    "data": [
+      {
+        "asterisk_server_code": "server1",
+        "caller_id": "Company <1001>",
+        "action": {
+          "Action": "Originate",
+          "Channel": "PJSIP/1234567890@endpoint1",
+          "Application": "Dial",
+          "Data": "PJSIP/0987654321@endpoint2,30",
+          "CallerID": "Company <1001>",
+          "Account": "client123"
+        },
+        "create_recording": true,
+        "project": "campaign_2024"
+      }
+    ]
+  }'
 ```
 
-### 2. Application Configuration
-
-#### Python Configuration:
-```python
-# config.py
-import os
-from dataclasses import dataclass
-
-@dataclass
-class CentralizedCallingConfig:
-    base_url: str = os.getenv('CENTRALIZED_CALLING_BASE_URL')
-    api_key: str = os.getenv('CENTRALIZED_CALLING_API_KEY')
-    callback_url: str = os.getenv('CENTRALIZED_CALLING_CALLBACK_URL')
-    callback_secret: str = os.getenv('CALLBACK_SECRET_KEY')
-    verification_enabled: bool = os.getenv('CALLBACK_VERIFICATION_ENABLED', 'true').lower() == 'true'
-    
-    def __post_init__(self):
-        if not all([self.base_url, self.api_key, self.callback_url]):
-            raise ValueError("Missing required centralized calling configuration")
+### Example 2: Insert Quick Call
+```bash
+curl -X POST "https://your-domain.com/calling/api/queues/insertquickcall/" \
+  -H "Authorization: Bearer your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "asterisk_server_code": "server1",
+    "number1": "1234567890",
+    "number2": "0987654321",
+    "customer_name": "John Doe",
+    "action": {
+      "Application": "Dial",
+      "Data": "PJSIP/0987654321@endpoint2,30"
+    },
+    "create_recording": true,
+    "project": "quick_campaign"
+  }'
 ```
 
-#### Node.js Configuration:
-```javascript
-// config.js
-module.exports = {
-    centralizedCalling: {
-        baseUrl: process.env.CENTRALIZED_CALLING_BASE_URL,
-        apiKey: process.env.CENTRALIZED_CALLING_API_KEY,
-        callbackUrl: process.env.CENTRALIZED_CALLING_CALLBACK_URL,
-        callbackSecret: process.env.CALLBACK_SECRET_KEY,
-        verificationEnabled: process.env.CALLBACK_VERIFICATION_ENABLED === 'true'
-    }
-};
+### Example 3: Get Master Queues
+```bash
+curl -X GET "https://your-domain.com/calling/api/queues/getmasterqueues/?page=1&page_size=10" \
+  -H "Authorization: Bearer your_api_key"
 ```
 
----
-
-## Monitoring and Logging Setup
-
-### 1. Logging Configuration
-
-#### Python Logging Setup:
-```python
-import logging
-import logging.handlers
-from datetime import datetime
-
-def setup_calling_logger():
-    """Setup dedicated logger for calling system"""
-    
-    logger = logging.getLogger('calling_system')
-    logger.setLevel(logging.INFO)
-    
-    # Create file handler with rotation
-    file_handler = logging.handlers.RotatingFileHandler(
-        'logs/calling_system.log',
-        maxBytes=10*1024*1024,  # 10MB
-        backupCount=5
-    )
-    
-    # Create console handler
-    console_handler = logging.StreamHandler()
-    
-    # Create formatter
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-    
-    file_handler.setFormatter(formatter)
-    console_handler.setFormatter(formatter)
-    
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-    
-    return logger
-
-# Usage
-calling_logger = setup_calling_logger()
+### Example 4: Update Queue Master
+```bash
+curl -X PUT "https://your-domain.com/calling/api/queues/updatequeuemaster/123" \
+  -H "Authorization: Bearer your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "queue_status": "paused",
+    "retry": true,
+    "retry_count": 5,
+    "retry_gap": 300
+  }'
 ```
 
-### 2. Monitoring Metrics
+## Error Handling
 
-#### Key Metrics to Track:
-```python
-from prometheus_client import Counter, Histogram, Gauge
-import time
+### Common Error Responses
 
-# Metrics
-call_submissions_total = Counter('call_submissions_total', 'Total call submissions', ['status'])
-call_duration_seconds = Histogram('call_duration_seconds', 'Call duration in seconds', ['status'])
-active_batches = Gauge('active_batches', 'Number of active batches')
-callback_processing_time = Histogram('callback_processing_time_seconds', 'Callback processing time')
-
-def track_call_submission(status):
-    """Track call submission metrics"""
-    call_submissions_total.labels(status=status).inc()
-
-def track_call_duration(duration, status):
-    """Track call duration metrics"""
-    call_duration_seconds.labels(status=status).observe(duration)
-
-def track_callback_processing(func):
-    """Decorator to track callback processing time"""
-    def wrapper(*args, **kwargs):
-        start_time = time.time()
-        try:
-            result = func(*args, **kwargs)
-            callback_processing_time.observe(time.time() - start_time)
-            return result
-        except Exception as e:
-            callback_processing_time.observe(time.time() - start_time)
-            raise
-    return wrapper
+#### 400 Bad Request
+```json
+{
+  "message": "Payload is required",
+  "status": "warning"
+}
 ```
 
----
-
-## Security Considerations
-
-### 1. Callback Security
-
-#### Implement Callback Verification:
-```python
-import hmac
-import hashlib
-from flask import request, abort
-
-def verify_callback_signature(payload, signature, secret):
-    """Verify callback signature"""
-    expected_signature = hmac.new(
-        secret.encode('utf-8'),
-        payload.encode('utf-8'),
-        hashlib.sha256
-    ).hexdigest()
-    
-    return hmac.compare_digest(signature, expected_signature)
-
-@app.route('/callback', methods=['POST'])
-def secure_callback():
-    # Get signature from headers
-    signature = request.headers.get('X-Signature')
-    if not signature:
-        abort(401, 'Missing signature')
-    
-    # Verify signature
-    payload = request.get_data(as_text=True)
-    if not verify_callback_signature(payload, signature, app.config['CALLBACK_SECRET']):
-        abort(401, 'Invalid signature')
-    
-    # Process callback
-    data = request.get_json()
-    # ... rest of callback processing
+#### 400 Bad Request - Batch Size Exceeded
+```json
+{
+  "message": "Queue data exceeds max batch size 1000",
+  "status": "warning"
+}
 ```
 
-### 2. API Key Security
-
-#### Secure API Key Storage:
-```python
-import os
-from cryptography.fernet import Fernet
-
-class SecureConfig:
-    def __init__(self):
-        self.encryption_key = os.getenv('ENCRYPTION_KEY')
-        self.cipher = Fernet(self.encryption_key.encode())
-    
-    def encrypt_api_key(self, api_key):
-        """Encrypt API key for storage"""
-        return self.cipher.encrypt(api_key.encode()).decode()
-    
-    def decrypt_api_key(self, encrypted_key):
-        """Decrypt API key for use"""
-        return self.cipher.decrypt(encrypted_key.encode()).decode()
+#### 401 Unauthorized
+```json
+{
+  "message": "Invalid API key",
+  "status": "error"
+}
 ```
 
----
-
-## Testing and Validation
-
-### 1. Unit Tests
-
-#### Python Test Examples:
-```python
-import unittest
-from unittest.mock import patch, Mock
-import requests
-
-class TestCentralizedCallingIntegration(unittest.TestCase):
-    
-    def setUp(self):
-        self.client = CentralizedCallingClient(
-            base_url="https://test.example.com",
-            api_key="test_api_key"
-        )
-    
-    @patch('requests.post')
-    def test_submit_call_batch(self, mock_post):
-        """Test call batch submission"""
-        mock_response = Mock()
-        mock_response.json.return_value = {'status': 'success', 'batch_id': 123}
-        mock_response.status_code = 200
-        mock_post.return_value = mock_response
-        
-        result = self.client.submit_call_batch(
-            batch_id=123,
-            phone_numbers=['9876543210', '9876543211']
-        )
-        
-        self.assertEqual(result['status'], 'success')
-        self.assertEqual(result['batch_id'], 123)
-    
-    def test_callback_processing(self):
-        """Test callback processing"""
-        callback_data = {
-            'event_type': 'call_completed',
-            'call_id': 'test_call_123',
-            'phone_number': '9876543210',
-            'duration': 120,
-            'disposition': 'answered'
-        }
-        
-        # Test callback processing logic
-        result = handle_callback_update(callback_data)
-        self.assertIsNotNone(result)
+#### 403 Forbidden
+```json
+{
+  "message": "Account code is required for superuser",
+  "status": "error"
+}
 ```
 
-### 2. Integration Tests
-
-#### End-to-End Test:
-```python
-def test_end_to_end_calling_flow():
-    """Test complete calling flow"""
-    
-    # 1. Submit batch
-    batch_id = 12345
-    phone_numbers = ['9876543210', '9876543211']
-    
-    result = calling_client.submit_call_batch(
-        batch_id=batch_id,
-        phone_numbers=phone_numbers
-    )
-    
-    assert result['status'] == 'success'
-    
-    # 2. Dispatch calls
-    dispatch_result = calling_client.dispatch_calls()
-    assert dispatch_result['status'] == 'success'
-    
-    # 3. Simulate callback
-    callback_data = {
-        'event_type': 'call_completed',
-        'batch_id': batch_id,
-        'phone_number': phone_numbers[0],
-        'call_status': 'completed',
-        'duration': 120
-    }
-    
-    # Process callback
-    handle_callback_update(callback_data)
-    
-    # 4. Verify database update
-    call_log = get_call_log(batch_id, phone_numbers[0])
-    assert call_log['call_status'] == 'completed'
-    assert call_log['duration'] == 120
+#### 404 Not Found
+```json
+{
+  "message": "Asterisk server not found",
+  "status": "warning"
+}
 ```
 
----
+#### 500 Internal Server Error
+```json
+{
+  "message": "Internal server error",
+  "status": "error"
+}
+```
 
-## Migration Checklist
+## Queue Management
 
-### Pre-Migration Checklist:
-- [ ] **Database Setup**
-  - [ ] Create PostgreSQL database
-  - [ ] Create required tables (call_logs, call_batches, local_call_queue)
-  - [ ] Set up database indexes
-  - [ ] Configure database connections
+### Queue Statuses
+- `pending`: Queue is waiting to be processed
+- `in-progress`: Queue is currently being processed
+- `paused`: Queue processing is paused
+- `flushed`: Queue has been flushed/emptied
+- `terminated`: Queue processing has been terminated
+- `processed`: All calls in queue have been processed
 
-- [ ] **Callback Implementation**
-  - [ ] Implement callback endpoint
-  - [ ] Set up SSL/TLS for callback URL
-  - [ ] Implement callback signature verification
-  - [ ] Test callback endpoint accessibility
+### Call Statuses
+- `pending`: Call is waiting to be made
+- `queued`: Call is in the processing queue
+- `processed`: Call has been processed
+- `flushed`: Call has been flushed/expired
 
-- [ ] **API Integration**
-  - [ ] Update API client code
-  - [ ] Implement batch submission logic
-  - [ ] Add call status monitoring
-  - [ ] Update error handling
+### Batch Size Limits
+- Maximum batch size: **1000** calls per request
+- If batch size is exceeded, the request will be rejected with a 400 error
 
-- [ ] **Configuration**
-  - [ ] Add environment variables
-  - [ ] Update application configuration
-  - [ ] Set up logging and monitoring
-  - [ ] Configure security settings
+### Queue Naming Convention
+- Master queues: `{accountcode}_{timestamp}`
+- RabbitMQ queues: `Client.Queue.{server_code}.{accountcode}`
 
-### Migration Steps:
-1. [ ] **Backup Current System**
-   - [ ] Backup existing call data
-   - [ ] Document current call flows
-   - [ ] Create rollback plan
+## Best Practices
 
-2. [ ] **Deploy Changes**
-   - [ ] Deploy database changes
-   - [ ] Deploy application updates
-   - [ ] Update configuration
-   - [ ] Test in staging environment
+### 1. Batch Size Management
+- Keep batch sizes reasonable (recommended: 100-500 calls per batch)
+- Monitor system performance when inserting large batches
+- Use pagination when retrieving queue data
 
-3. [ ] **Register with Centralized System**
-   - [ ] Submit client registration request
-   - [ ] Provide callback URL
-   - [ ] Receive API key
-   - [ ] Test API connectivity
+### 2. Error Handling
+- Always check response status codes
+- Implement retry logic for failed requests
+- Log errors for debugging purposes
 
-4. [ ] **Validation**
-   - [ ] Run integration tests
-   - [ ] Test callback processing
-   - [ ] Validate call flow
-   - [ ] Monitor system performance
+### 3. Data Validation
+- Validate all required fields before sending requests
+- Ensure phone numbers are in correct format
+- Check that asterisk server codes are valid
 
-### Post-Migration Checklist:
-- [ ] **Monitoring**
-  - [ ] Set up monitoring dashboards
-  - [ ] Configure alerting
-  - [ ] Monitor call success rates
-  - [ ] Track system performance
+### 4. Queue Management
+- Monitor queue statuses regularly
+- Use appropriate queue statuses for different scenarios
+- Implement proper retry mechanisms
 
-- [ ] **Documentation**
-  - [ ] Update internal documentation
-  - [ ] Document new call flows
-  - [ ] Create troubleshooting guides
-  - [ ] Train support team
+### 5. Security
+- Keep API keys secure and rotate them regularly
+- Use HTTPS for all API communications
+- Implement proper access controls
 
-- [ ] **Optimization**
-  - [ ] Analyze call patterns
-  - [ ] Optimize batch sizes
-  - [ ] Fine-tune rate limits
-  - [ ] Improve error handling
+### 6. Performance
+- Use connection pooling for high-volume operations
+- Implement proper timeout settings
+- Monitor system resources during bulk operations
 
----
+## Field Descriptions
 
-## Support and Troubleshooting
+### Required Fields
+- `asterisk_server_code`: The server code where the call will be processed
+- `batch_id`: Unique identifier for the batch of calls
+- `data`: Array of call data to be inserted
 
-### Common Issues and Solutions:
+### Optional Fields
+- `queue_id`: If not provided, a new queue will be created
+- `dids`: Array of DID numbers for the queue
+- `caller_id`: Display name for the caller
+- `action`: Detailed call action configuration
+- `retry`: Number of retry attempts for failed calls
+- `create_recording`: Whether to record the call
+- `recording_format`: Format for call recordings (default: wav)
+- `project`: Project identifier for the calls
+- `deadline`: Deadline for call completion
 
-#### 1. Callback Not Receiving Updates
-**Problem**: Callbacks not being received
-**Solutions**:
-- Verify callback URL is accessible from internet
-- Check SSL certificate validity
-- Ensure callback endpoint returns 200 status
-- Verify signature verification logic
+### Action Configuration
+The `action` field contains detailed configuration for the Asterisk Originate action:
+- `Channel`: The channel to originate the call on
+- `Application`: The application to execute (Dial, AGI, etc.)
+- `Data`: Data to pass to the application
+- `Timeout`: Call timeout in milliseconds
+- `CallerID`: Caller ID to display
+- `Account`: Account code for billing
+- `Async`: Whether to make the call asynchronously
 
-#### 2. Database Connection Issues
-**Problem**: Cannot connect to database
-**Solutions**:
-- Check database connection strings
-- Verify database user permissions
-- Ensure database server is accessible
-- Check firewall settings
+## System Configuration
 
-#### 3. API Authentication Failures
-**Problem**: API requests failing with 401 errors
-**Solutions**:
-- Verify API key is correct
-- Check API key format
-- Ensure API key is not expired
-- Verify request headers
+### Database Settings
+- Queue batch size limit: 1000 calls
+- Timezone: Configurable via settings
+- Day end time: Configurable via settings
+- Day start time: Configurable via settings
 
-### Support Contacts:
-- **Technical Support**: support@centralized-calling.com
-- **Documentation**: https://docs.centralized-calling.com
-- **Status Page**: https://status.centralized-calling.com
+### RabbitMQ Configuration
+- Queue type: Quorum queues
+- Message persistence: Enabled
+- Queue durability: Enabled
 
----
+### Redis Configuration
+- Multiple databases for different purposes
+- Client cache: Database 6
+- Asterisk events: Database 1
+- Queue management: Database 2
 
-## Conclusion
-
-This documentation provides a comprehensive guide for implementing the necessary client-side changes to integrate with the Centralized Calling System. Follow the checklist and implementation examples to ensure a smooth migration and successful integration.
-
-**Important Notes**:
-- Test all changes in a staging environment before production deployment
-- Implement proper error handling and monitoring
-- Keep your API keys secure and never expose them in client-side code
-- Monitor system performance and call success rates after migration
-- Have a rollback plan ready in case of issues
-
-For additional support or questions not covered in this documentation, please contact the technical support team.
+This documentation provides comprehensive information for integrating with the queue system. For additional support or questions, please refer to the system administrators or technical documentation.
