@@ -218,8 +218,36 @@ For immediate, single-call operations without creating a queue.
   "message": "Quick call inserted successfully",
   "status": "success",
   "data": {
-    "call_id": "call-uuid-1234",
-    "queue_id": 124
+    "asterisk_server_code": "awsv3",
+    "action": {
+      "Action": "Originate",
+      "Channel": "PJSIP/09921890245@00919240903901",
+      "Application": "Dial",
+      "Data": "PJSIP/09921890245@00919240903901,30",
+      "Timeout": 30000,
+      "CallerID": "9921890245 <Gauri>",
+      "Account": "citizen",
+      "EarlyMedia": true,
+      "Async": true,
+      "ChannelId": "channel-12",
+      "OtherChannelId": "b7a3d2c6-9b21-4a78-9314-1c35c992d418"
+    },
+    "retry": 0,
+    "call_tried": 0,
+    "call_success": 0,
+    "call_failed": 0,
+    "call_status": "queued",
+    "connected": false,
+    "create_recording": true,
+    "recording_format": "wav",
+    "queue_type": "outbound",
+    "queue_status": "pending",
+    "call_timeout": 30,
+    "accountcode": "citizen",
+    "caller_id": "channel-12",
+    "mix_monitor_command": "/home/ubuntu/audiosocket_server/script.py /home/ubuntu/audiosocket_server/recording/channel-12.wav",
+    "recording_path": "/home/ubuntu/audiosocket_server/recording/channel-12.wav",
+    "recording_url": "https://storage.googleapis.com/smartvoicebot/channel-12.wav"
   }
 }
 ```
