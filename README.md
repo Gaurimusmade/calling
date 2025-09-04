@@ -26,7 +26,7 @@ Content-Type: application/json
 
 ### 2. Test Connection
 ```bash
-curl -X GET "https://novacaller.markytics.com/calling/api/queues/getmasterqueues/" \
+curl -X GET "https://novacaller.markytics.com/calling/api/v1/clients/test-connection" \
   -H "X-API-KEY: your_api_key"
 ```
 
