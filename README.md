@@ -1,4 +1,4 @@
-# Centralized Calling System - Client API Integration Guide
+# Centralized Calling System 
 
 ## Overview
 This guide provides instructions for integrating with the Centralized Calling System. The system handles all calling operations centrally - clients only need to add data to their queues.
@@ -16,7 +16,7 @@ https://novacaller.markytics.com
 ### Required Headers
 All API requests must include:
 ```
-Authorization: Bearer <your_api_key>
+X-API-KEY: <your_api_key>
 Content-Type: application/json
 ```
 
@@ -27,13 +27,13 @@ Content-Type: application/json
 ### 2. Test Connection
 ```bash
 curl -X GET "https://novacaller.markytics.com/calling/api/queues/getmasterqueues/" \
-  -H "Authorization: Bearer your_api_key"
+  -H "X-API-KEY: your_api_key"
 ```
 
 ### Rate Limits
-- Max batch size: 1000 calls per request
-- Recommended: 100-500 calls per request
-
+- **First Call (queue_id = null):** Max batch size: 1000 calls per request, Recommended: 100-500 calls per request
+- **Subsequent Calls (with queue_id):** No limit on number of calls per request
+ 
 ## Core Operations
 
 ### 1. Queue Data Insertion (Bulk Calls)
@@ -41,10 +41,16 @@ curl -X GET "https://novacaller.markytics.com/calling/api/queues/getmasterqueues
 
 For bulk calling operations. Add batches of call data that will be processed automatically.
 
+**Important Queue Management Workflow:**
+1. **First Call of the Day:** Pass `queue_id` as `null` or omit it completely
+2. **API Response:** Returns a `queue_id` that you must use for all subsequent calls that day
+3. **Subsequent Calls:** Use the returned `queue_id` for unlimited calls throughout the day
+4. **Next Day:** Start fresh with `queue_id` as `null` again
+
 **Request Payload Structure:**
 ```json
 {
-  "queue_id": "integer (optional)",
+  "queue_id": "integer (optional - null for first call, use returned queue_id for subsequent calls)",
   "batch_id": "integer (required)",
   "dids": ["string array (optional)"],
   "data": ["QueueItem array (required)"]
@@ -62,38 +68,24 @@ For bulk calling operations. Add batches of call data that will be processed aut
     "Channel": "string (required)",
     "Application": "string (optional)",
     "Data": "string (optional)",
-    "Timeout": "integer (optional, default: 30000)",
     "CallerID": "string (optional)",
     "Variable": "string (optional)",
     "Account": "string (optional)",
-    "EarlyMedia": "boolean (optional, default: true)",
     "Async": "boolean (optional, default: true)",
-    "Codecs": "string (optional)",
     "ChannelId": "string (optional)",
     "OtherChannelId": "string (optional)",
-    "PreDialGoSub": "string (optional)"
   },
   "retry": "integer (default: 0)",
-  "call_tried": "integer (default: 0)",
-  "call_success": "integer (default: 0)",
-  "call_failed": "integer (default: 0)",
-  "call_status": "string (default: 'pending')",
-  "connected": "boolean (default: false)",
   "create_recording": "boolean (default: false)",
-  "recording_format": "string (default: 'wav')",
-  "queue_type": "string (default: 'outbound')",
-  "queue_status": "string (default: 'pending')",
-  "call_timeout": "integer (default: 30)",
   "recording_path": "string (optional)",
   "mix_monitor_command": "string (optional)",
-  "disposition": "string (optional)",
   "contact_number": "integer (optional)",
   "project": "string (optional)",
   "deadline": "datetime (optional)"
 }
 ```
 
-**Complete Example:**
+**Complete Example (First Call of the Day):**
 ```json
 {
   "queue_id": null,
@@ -109,18 +101,49 @@ For bulk calling operations. Add batches of call data that will be processed aut
         "Channel": "PJSIP/1234567890@endpoint1",
         "Application": "Dial",
         "Data": "PJSIP/0987654321@endpoint2,30",
-        "Timeout": 30000,
         "CallerID": "Your Company <1001>",
         "Account": "your_account_code",
-        "EarlyMedia": true,
-        "Async": true
+        "Async": true,
+        "ChannelId": "channel-123"
       },
       "retry": 3,
       "create_recording": true,
-      "recording_format": "wav",
-      "queue_type": "outbound",
-      "call_timeout": 30,
+      "recording_path": "/recordings/call_123.wav",
+      "mix_monitor_command": "MixMonitor /recordings/call_123.wav",
       "contact_number": 1234567890,
+      "project": "campaign_2024",
+      "deadline": "2024-12-31T23:59:59Z"
+    }
+  ]
+}
+```
+
+**Example for Subsequent Calls (Same Day):**
+```json
+{
+  "queue_id": 123,
+  "batch_id": 12346,
+  "dids": ["+1111111111", "+2222222222"],
+  "data": [
+    {
+      "asterisk_server_code": "server1",
+      "caller_id": "Your Company <1001>",
+      "action": {
+        "Action": "Originate",
+        "ActionID": "call-uuid-5678",
+        "Channel": "PJSIP/1111111111@endpoint1",
+        "Application": "Dial",
+        "Data": "PJSIP/2222222222@endpoint2,30",
+        "CallerID": "Your Company <1001>",
+        "Account": "your_account_code",
+        "Async": true,
+        "ChannelId": "channel-456"
+      },
+      "retry": 3,
+      "create_recording": true,
+      "recording_path": "/recordings/call_456.wav",
+      "mix_monitor_command": "MixMonitor /recordings/call_456.wav",
+      "contact_number": 1111111111,
       "project": "campaign_2024",
       "deadline": "2024-12-31T23:59:59Z"
     }
@@ -150,22 +173,20 @@ For immediate, single-call operations without creating a queue.
 ```json
 {
   "asterisk_server_code": "string (required)",
+  "customer_name": "string (required)",
   "number1": "string (required)",
   "number2": "string (optional)",
-  "customer_name": "string (required)",
-  "prefix": "string (optional)",
-  "endpoint": "string (optional)",
+  "did": "string (optional)",
   "action": {
-    "Application": "string (required)",
+    "Action": "Originate (required)",
+    "Application": "Dial (required)",
     "Data": "string (optional)",
-    "Async": "boolean (optional)",
-    "ChannelId": "string (optional)"
+    "ChannelId": "string (optional)",
+    "Async": "boolean (optional, default: true)"
   },
-  "create_recording": "boolean (optional)",
-  "recording_format": "string (optional)",
-  "mix_monitor_command": "string (optional)",
-  "call_timeout": "integer (optional)",
-  "project": "string (optional)"
+  "create_recording": "boolean (optional, default: true)",
+  "recording_path": "string (optional)",
+  "mix_monitor_command": "string (optional)"
 }
 ```
 
@@ -173,21 +194,20 @@ For immediate, single-call operations without creating a queue.
 ```json
 {
   "asterisk_server_code": "server1",
+  "customer_name": "John Doe",
   "number1": "1234567890",
   "number2": "0987654321",
-  "customer_name": "John Doe",
-  "prefix": "1",
-  "endpoint": "provider1",
+  "did": "+1234567890",
   "action": {
+    "Action": "Originate",
     "Application": "Dial",
     "Data": "PJSIP/0987654321@endpoint2,30",
-    "Async": true,
-    "ChannelId": "channel-123"
+    "ChannelId": "channel-123",
+    "Async": true
   },
   "create_recording": true,
-  "recording_format": "wav",
-  "call_timeout": 30,
-  "project": "quick_campaign"
+  "recording_path": "/recordings/quick_call_123.wav",
+  "mix_monitor_command": "MixMonitor /recordings/quick_call_123.wav"
 }
 ```
 
